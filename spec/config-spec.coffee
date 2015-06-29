@@ -251,9 +251,9 @@ describe "Config", ->
         it "removes all scoped and unscoped properties for that key-path", ->
           atom.config.setDefaults("foo.bar", baz: 100)
 
-          atom.config.set("foo.bar", { baz: 1, ok: 2 }, scopeSelector: ".a")
-          atom.config.set("foo.bar", { baz: 11, ok: 12 }, scopeSelector: ".b")
-          atom.config.set("foo.bar", { baz: 21, ok: 22 })
+          atom.config.set("foo.bar", {baz: 1, ok: 2}, scopeSelector: ".a")
+          atom.config.set("foo.bar", {baz: 11, ok: 12}, scopeSelector: ".b")
+          atom.config.set("foo.bar", {baz: 21, ok: 22})
 
           atom.config.unset("foo.bar.baz")
 
@@ -486,6 +486,7 @@ describe "Config", ->
 
       atom.config.set('foo.bar.baz', "value 1")
       expect(observeHandler).toHaveBeenCalledWith("value 1")
+      advanceClock(100) # complete pending save that was requested in ::set
 
       observeHandler.reset()
       atom.config.loadUserConfig()
@@ -666,6 +667,23 @@ describe "Config", ->
               foo:
                 bar: 'coffee'
 
+      describe "when an error is thrown writing the file to disk", ->
+        addErrorHandler = null
+        beforeEach ->
+          atom.notifications.onDidAddNotification addErrorHandler = jasmine.createSpy()
+
+        it "creates a notification", ->
+          jasmine.unspy CSON, 'writeFileSync'
+          spyOn(CSON, 'writeFileSync').andCallFake ->
+            error = new Error()
+            error.code = 'EPERM'
+            error.path = atom.config.getUserConfigPath()
+            throw error
+
+          save = -> atom.config.save()
+          expect(save).not.toThrow()
+          expect(addErrorHandler.callCount).toBe 1
+
     describe ".loadUserConfig()", ->
       beforeEach ->
         expect(fs.existsSync(atom.config.configDirPath)).toBeFalsy()
@@ -698,6 +716,26 @@ describe "Config", ->
         it "updates the config data based on the file contents", ->
           expect(atom.config.get("foo.bar")).toBe 'baz'
           expect(atom.config.get("foo.bar", scope: ['.source.ruby'])).toBe 'more-specific'
+
+      describe "when the config file does not conform to the schema", ->
+        beforeEach ->
+          fs.writeFileSync atom.config.configFilePath, """
+            '*':
+              foo:
+                bar: 'omg'
+                int: 'baz'
+            '.source.ruby':
+              foo:
+                bar: 'scoped'
+                int: 'nope'
+          """
+
+        it "validates and does not load the incorrect values", ->
+          atom.config.loadUserConfig()
+          expect(atom.config.get("foo.int")).toBe 12
+          expect(atom.config.get("foo.bar")).toBe 'omg'
+          expect(atom.config.get("foo.int", scope: ['.source.ruby'])).toBe 12
+          expect(atom.config.get("foo.bar", scope: ['.source.ruby'])).toBe 'scoped'
 
       describe "when the config file contains valid cson", ->
         beforeEach ->
@@ -751,6 +789,21 @@ describe "Config", ->
 
           expect(warnSpy).toHaveBeenCalled()
           expect(warnSpy.mostRecentCall.args[0]).toContain "foo.int"
+
+      describe "when there is a pending save", ->
+        it "does not change the config settings", ->
+          fs.writeFileSync atom.config.configFilePath, "'*': foo: bar: 'baz'"
+
+          atom.config.set("foo.bar", "quux")
+          atom.config.loadUserConfig()
+          expect(atom.config.get("foo.bar")).toBe "quux"
+
+          advanceClock(100)
+          expect(atom.config.save.callCount).toBe 1
+
+          expect(atom.config.get("foo.bar")).toBe "quux"
+          atom.config.loadUserConfig()
+          expect(atom.config.get("foo.bar")).toBe "baz"
 
     describe ".observeUserConfig()", ->
       updatedHandler = null
@@ -817,7 +870,7 @@ describe "Config", ->
             expect(atom.config.get('foo.bar')).toBe 'baz'
             expect(atom.config.get('foo.baz')).toBe 'ok'
 
-        describe 'when the default value is a complex value', ->
+        describe "when the default value is a complex value", ->
           beforeEach ->
             atom.config.setSchema 'foo.bar',
               type: 'array'
@@ -840,7 +893,7 @@ describe "Config", ->
               expect(atom.config.get('foo.bar')).toEqual ['baz', 'ok']
               expect(atom.config.get('foo.baz')).toBe 'another'
 
-        describe 'when scoped settings are used', ->
+        describe "when scoped settings are used", ->
           it "fires a change event for scoped settings that are removed", ->
             scopedSpy = jasmine.createSpy()
             atom.config.onDidChange('foo.scoped', scope: ['.source.ruby'], scopedSpy)
@@ -950,7 +1003,6 @@ describe "Config", ->
             expect(fs.existsSync(atom.config.configDirPath)).toBeTruthy()
             expect(fs.existsSync(path.join(atom.config.configDirPath, 'packages'))).toBeTruthy()
             expect(fs.isFileSync(path.join(atom.config.configDirPath, 'snippets.cson'))).toBeTruthy()
-            expect(fs.isFileSync(path.join(atom.config.configDirPath, 'config.cson'))).toBeTruthy()
             expect(fs.isFileSync(path.join(atom.config.configDirPath, 'init.coffee'))).toBeTruthy()
             expect(fs.isFileSync(path.join(atom.config.configDirPath, 'styles.less'))).toBeTruthy()
 
@@ -1105,6 +1157,62 @@ describe "Config", ->
         expect(atom.config.get('foo.bar.str')).toBe 'ok'
         expect(atom.config.get('foo.bar.str', scope: ['.source.js'])).toBe 'omg'
         expect(atom.config.get('foo.bar.str', scope: ['.source.coffee'])).toBe 'ok'
+
+      describe 'when a schema is added after config values have been set', ->
+        schema = null
+        beforeEach ->
+          schema =
+            type: 'object'
+            properties:
+              int:
+                type: 'integer'
+                default: 2
+              str:
+                type: 'string'
+                default: 'def'
+
+        it "respects the new schema when values are set", ->
+          expect(atom.config.set('foo.bar.str', 'global')).toBe true
+          expect(atom.config.set('foo.bar.str', 'scoped', scopeSelector: '.source.js')).toBe true
+          expect(atom.config.get('foo.bar.str')).toBe 'global'
+          expect(atom.config.get('foo.bar.str', scope: ['.source.js'])).toBe 'scoped'
+
+          expect(atom.config.set('foo.bar.noschema', 'nsGlobal')).toBe true
+          expect(atom.config.set('foo.bar.noschema', 'nsScoped', scopeSelector: '.source.js')).toBe true
+          expect(atom.config.get('foo.bar.noschema')).toBe 'nsGlobal'
+          expect(atom.config.get('foo.bar.noschema', scope: ['.source.js'])).toBe 'nsScoped'
+
+          expect(atom.config.set('foo.bar.int', 'nope')).toBe true
+          expect(atom.config.set('foo.bar.int', 'notanint', scopeSelector: '.source.js')).toBe true
+          expect(atom.config.set('foo.bar.int', 23, scopeSelector: '.source.coffee')).toBe true
+          expect(atom.config.get('foo.bar.int')).toBe 'nope'
+          expect(atom.config.get('foo.bar.int', scope: ['.source.js'])).toBe 'notanint'
+          expect(atom.config.get('foo.bar.int', scope: ['.source.coffee'])).toBe 23
+
+          atom.config.setSchema('foo.bar', schema)
+
+          expect(atom.config.get('foo.bar.str')).toBe 'global'
+          expect(atom.config.get('foo.bar.str', scope: ['.source.js'])).toBe 'scoped'
+          expect(atom.config.get('foo.bar.noschema')).toBe 'nsGlobal'
+          expect(atom.config.get('foo.bar.noschema', scope: ['.source.js'])).toBe 'nsScoped'
+
+          expect(atom.config.get('foo.bar.int')).toBe 2
+          expect(atom.config.get('foo.bar.int', scope: ['.source.js'])).toBe 2
+          expect(atom.config.get('foo.bar.int', scope: ['.source.coffee'])).toBe 23
+
+        it "sets all values that adhere to the schema", ->
+          expect(atom.config.set('foo.bar.int', 10)).toBe true
+          expect(atom.config.set('foo.bar.int', 15, scopeSelector: '.source.js')).toBe true
+          expect(atom.config.set('foo.bar.int', 23, scopeSelector: '.source.coffee')).toBe true
+          expect(atom.config.get('foo.bar.int')).toBe 10
+          expect(atom.config.get('foo.bar.int', scope: ['.source.js'])).toBe 15
+          expect(atom.config.get('foo.bar.int', scope: ['.source.coffee'])).toBe 23
+
+          atom.config.setSchema('foo.bar', schema)
+
+          expect(atom.config.get('foo.bar.int')).toBe 10
+          expect(atom.config.get('foo.bar.int', scope: ['.source.js'])).toBe 15
+          expect(atom.config.get('foo.bar.int', scope: ['.source.coffee'])).toBe 23
 
       describe 'when the value has an "integer" type', ->
         beforeEach ->
@@ -1271,6 +1379,16 @@ describe "Config", ->
 
           expect(atom.config.set('foo.bar.aString', nope: 'nope')).toBe false
           expect(atom.config.get('foo.bar.aString')).toBe 'ok'
+
+        describe 'when the schema has a "maximumLength" key', ->
+          it "trims the string to be no longer than the specified maximum", ->
+            schema =
+              type: 'string'
+              default: 'ok'
+              maximumLength: 3
+            atom.config.setSchema('foo.bar.aString', schema)
+            atom.config.set('foo.bar.aString', 'abcdefg')
+            expect(atom.config.get('foo.bar.aString')).toBe 'abc'
 
       describe 'when the value has an "object" type', ->
         beforeEach ->

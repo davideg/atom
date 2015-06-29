@@ -5,11 +5,11 @@
 ### On Windows 7
   * [Visual C++ 2010 Express](http://www.visualstudio.com/en-us/downloads/download-visual-studio-vs#DownloadFamilies_4)
   * [Visual Studio 2010 Service Pack 1](http://www.microsoft.com/en-us/download/details.aspx?id=23691)
-  * [node.js](http://nodejs.org/download/) v0.10.x
+  * [node.js](http://nodejs.org/download/) (0.10.x or 0.12.x) or [io.js](https://iojs.org) (1.x)
     * For 64-bit builds of node and native modules you **must** have the
     [Windows 7 64-bit SDK](http://www.microsoft.com/en-us/download/details.aspx?id=8279).
     You may also need the [compiler update for the Windows SDK 7.1](http://www.microsoft.com/en-us/download/details.aspx?id=4422)
-  * [Python](http://www.python.org/download/) v2.7.
+  * [Python](https://www.python.org/downloads/) v2.7.
     * The python.exe must be available at `%SystemDrive%\Python27\python.exe`.
       If it is installed elsewhere, you can create a symbolic link to the
       directory containing the python.exe using:
@@ -18,20 +18,25 @@
 
 ### On Windows 8
   * [Visual Studio Express 2013 for Windows Desktop](http://www.visualstudio.com/en-us/downloads/download-visual-studio-vs#DownloadFamilies_2)
-  * [node.js](http://nodejs.org/download/) v0.10.x
-  * [Python](http://www.python.org/download/) v2.7.x (required by [node-gyp](https://github.com/TooTallNate/node-gyp))
+  * [node.js](http://nodejs.org/download/) (0.10.x or 0.12.x) or [io.js](https://iojs.org) (1.x)
+  * [Python](https://www.python.org/downloads/) v2.7.x (required by [node-gyp](https://github.com/TooTallNate/node-gyp))
   * [GitHub for Windows](http://windows.github.com/)
 
 ## Instructions
 
-  ```bat
-  # Use the `Git Shell` app which was installed by GitHub for Windows. Also Make
-  # sure you have logged into the GitHub for Windows GUI App.
-  cd C:\
-  git clone https://github.com/atom/atom/
-  cd atom
-  script/build # Creates application in the `Program Files` directory
-  ```
+```bash
+# Use the `Git Shell` program which was installed by GitHub for Windows.
+# Also make sure that you are logged into GitHub for Windows.
+cd C:\
+git clone https://github.com/atom/atom/
+cd atom
+script/build # Creates application in the `Program Files` directory
+```
+
+### `script/build` Options
+  * `--install-dir` - Creates the final built application in this directory.
+  * `--build-dir` - Build the application in this directory.
+  * `--verbose` - Verbose mode. A lot more information output.
 
 ## Why do I have to use GitHub for Windows?
 
@@ -78,6 +83,7 @@ If none of this works, do install Github for Windows and use its Git shell. Make
     ```
     $env:GYP_MSVS_VERSION=2013
     ```
+  * If you are using Visual Studio 2013 and the build fails with some other error message this environment variable might still be required.
 
 * Other `node-gyp` errors on first build attempt, even though the right node and python versions are installed.
   * Do try the build command one more time, as experience shows it often works on second try in many of these cases.
