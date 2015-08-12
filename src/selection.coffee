@@ -198,7 +198,7 @@ class Selection extends Model
         if position.isLessThan(@initialScreenRange.start)
           @marker.setScreenRange([position, @initialScreenRange.end], reversed: true)
         else
-          @marker.setScreenRange([@initialScreenRange.start, position])
+          @marker.setScreenRange([@initialScreenRange.start, position], reversed: false)
       else
         @cursor.setScreenPosition(position)
 
@@ -290,6 +290,14 @@ class Selection extends Model
   selectToNextWordBoundary: ->
     @modifySelection => @cursor.moveToNextWordBoundary()
 
+  # Public: Selects text to the previous subword boundary.
+  selectToPreviousSubwordBoundary: ->
+    @modifySelection => @cursor.moveToPreviousSubwordBoundary()
+
+  # Public: Selects text to the next subword boundary.
+  selectToNextSubwordBoundary: ->
+    @modifySelection => @cursor.moveToNextSubwordBoundary()
+
   # Public: Selects all the text from the current cursor position to the
   # beginning of the next paragraph.
   selectToBeginningOfNextParagraph: ->
@@ -316,7 +324,8 @@ class Selection extends Model
   # Public: Expands the newest selection to include the entire word on which
   # the cursors rests.
   expandOverWord: ->
-    @setBufferRange(@getBufferRange().union(@cursor.getCurrentWordBufferRange()))
+    @setBufferRange(@getBufferRange().union(@cursor.getCurrentWordBufferRange()), autoscroll: false)
+    @cursor.autoscroll()
 
   # Public: Selects an entire line in the buffer.
   #
@@ -334,7 +343,8 @@ class Selection extends Model
   # It also includes the newline character.
   expandOverLine: ->
     range = @getBufferRange().union(@cursor.getCurrentLineBufferRange(includeNewline: true))
-    @setBufferRange(range)
+    @setBufferRange(range, autoscroll: false)
+    @cursor.autoscroll()
 
   ###
   Section: Modifying the selected text
@@ -387,10 +397,7 @@ class Selection extends Model
       @editor.setIndentationForBufferRow(oldBufferRange.start.row, desiredIndentLevel)
 
     if options.autoIndentNewline and text is '\n'
-      currentIndentation = @editor.indentationForBufferRow(newBufferRange.start.row)
       @editor.autoIndentBufferRow(newBufferRange.end.row, preserveLeadingWhitespace: true, skipBlankLines: false)
-      if @editor.indentationForBufferRow(newBufferRange.end.row) < currentIndentation
-        @editor.setIndentationForBufferRow(newBufferRange.end.row, currentIndentation)
     else if options.autoDecreaseIndent and NonWhitespaceRegExp.test(text)
       @editor.autoDecreaseIndentForBufferRow(newBufferRange.start.row)
 
@@ -456,6 +463,18 @@ class Selection extends Model
   # selection to the end of the current word if nothing is selected.
   deleteToEndOfWord: ->
     @selectToEndOfWord() if @isEmpty()
+    @deleteSelectedText()
+
+  # Public: Removes the selection or all characters from the start of the
+  # selection to the end of the current word if nothing is selected.
+  deleteToBeginningOfSubword: ->
+    @selectToPreviousSubwordBoundary() if @isEmpty()
+    @deleteSelectedText()
+
+  # Public: Removes the selection or all characters from the start of the
+  # selection to the end of the current word if nothing is selected.
+  deleteToEndOfSubword: ->
+    @selectToNextSubwordBoundary() if @isEmpty()
     @deleteSelectedText()
 
   # Public: Removes only the selected text.

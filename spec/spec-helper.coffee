@@ -167,6 +167,7 @@ afterEach ->
   atom.packages.deactivatePackages()
   atom.menu.template = []
   atom.contextMenu.clear()
+  atom.notifications.clear()
 
   atom.workspace?.destroy()
   atom.workspace = null
@@ -293,7 +294,7 @@ window.keydownEvent = (key, properties={}) ->
   originalEventProperties.cmd = properties.metaKey
   originalEventProperties.target = properties.target?[0] ? properties.target
   originalEventProperties.which = properties.which
-  originalEvent = KeymapManager.keydownEvent(key, originalEventProperties)
+  originalEvent = KeymapManager.buildKeydownEvent(key, originalEventProperties)
   properties = $.extend({originalEvent}, properties)
   $.Event("keydown", properties)
 

@@ -7,7 +7,7 @@ nbsp = String.fromCharCode(160)
 
 describe "TextEditorComponent", ->
   [contentNode, editor, wrapperView, wrapperNode, component, componentNode, verticalScrollbarNode, horizontalScrollbarNode] = []
-  [lineHeightInPixels, charWidth, nextAnimationFrame, noAnimationFrame, tileSize] = []
+  [lineHeightInPixels, charWidth, nextAnimationFrame, noAnimationFrame, tileSize, tileHeightInPixels] = []
 
   beforeEach ->
     tileSize = 3
@@ -45,6 +45,7 @@ describe "TextEditorComponent", ->
       component.setFontSize(20)
 
       lineHeightInPixels = editor.getLineHeightInPixels()
+      tileHeightInPixels = tileSize * lineHeightInPixels
       charWidth = editor.getDefaultCharWidth()
       componentNode = component.getDomNode()
       verticalScrollbarNode = componentNode.querySelector('.vertical-scrollbar')
@@ -87,13 +88,34 @@ describe "TextEditorComponent", ->
       else
         expect(lineNode.textContent).toBe(tokenizedLine.text)
 
-    it "renders the currently-visible lines in a tiled fashion", ->
+    it "renders tiles upper in the stack in front of the ones below", ->
       wrapperNode.style.height = 6.5 * lineHeightInPixels + 'px'
-      tileHeight = tileSize * lineHeightInPixels
       component.measureDimensions()
       nextAnimationFrame()
 
-      tilesNodes = componentNode.querySelectorAll(".tile")
+      tilesNodes = componentNode.querySelector(".lines").querySelectorAll(".tile")
+
+      expect(tilesNodes[0].style.zIndex).toBe("2")
+      expect(tilesNodes[1].style.zIndex).toBe("1")
+      expect(tilesNodes[2].style.zIndex).toBe("0")
+
+      verticalScrollbarNode.scrollTop = 1 * lineHeightInPixels
+      verticalScrollbarNode.dispatchEvent(new UIEvent('scroll'))
+      nextAnimationFrame()
+
+      tilesNodes = componentNode.querySelector(".lines").querySelectorAll(".tile")
+
+      expect(tilesNodes[0].style.zIndex).toBe("3")
+      expect(tilesNodes[1].style.zIndex).toBe("2")
+      expect(tilesNodes[2].style.zIndex).toBe("1")
+      expect(tilesNodes[3].style.zIndex).toBe("0")
+
+    it "renders the currently-visible lines in a tiled fashion", ->
+      wrapperNode.style.height = 6.5 * lineHeightInPixels + 'px'
+      component.measureDimensions()
+      nextAnimationFrame()
+
+      tilesNodes = componentNode.querySelector(".lines").querySelectorAll(".tile")
 
       expect(tilesNodes.length).toBe(3)
 
@@ -103,13 +125,13 @@ describe "TextEditorComponent", ->
       expectTileContainsRow(tilesNodes[0], 1, top: 1 * lineHeightInPixels)
       expectTileContainsRow(tilesNodes[0], 2, top: 2 * lineHeightInPixels)
 
-      expect(tilesNodes[1].style['-webkit-transform']).toBe "translate3d(0px, #{1 * tileHeight}px, 0px)"
+      expect(tilesNodes[1].style['-webkit-transform']).toBe "translate3d(0px, #{1 * tileHeightInPixels}px, 0px)"
       expect(tilesNodes[1].querySelectorAll(".line").length).toBe(tileSize)
       expectTileContainsRow(tilesNodes[1], 3, top: 0 * lineHeightInPixels)
       expectTileContainsRow(tilesNodes[1], 4, top: 1 * lineHeightInPixels)
       expectTileContainsRow(tilesNodes[1], 5, top: 2 * lineHeightInPixels)
 
-      expect(tilesNodes[2].style['-webkit-transform']).toBe "translate3d(0px, #{2 * tileHeight}px, 0px)"
+      expect(tilesNodes[2].style['-webkit-transform']).toBe "translate3d(0px, #{2 * tileHeightInPixels}px, 0px)"
       expect(tilesNodes[2].querySelectorAll(".line").length).toBe(tileSize)
       expectTileContainsRow(tilesNodes[2], 6, top: 0 * lineHeightInPixels)
       expectTileContainsRow(tilesNodes[2], 7, top: 1 * lineHeightInPixels)
@@ -121,24 +143,24 @@ describe "TextEditorComponent", ->
       verticalScrollbarNode.dispatchEvent(new UIEvent('scroll'))
       nextAnimationFrame()
 
-      tilesNodes = componentNode.querySelectorAll(".tile")
+      tilesNodes = componentNode.querySelector(".lines").querySelectorAll(".tile")
 
       expect(component.lineNodeForScreenRow(2)).toBeUndefined()
       expect(tilesNodes.length).toBe(3)
 
-      expect(tilesNodes[0].style['-webkit-transform']).toBe "translate3d(0px, -5px, 0px)"
+      expect(tilesNodes[0].style['-webkit-transform']).toBe "translate3d(0px, #{0 * tileHeightInPixels - 5}px, 0px)"
       expect(tilesNodes[0].querySelectorAll(".line").length).toBe(tileSize)
       expectTileContainsRow(tilesNodes[0], 3, top: 0 * lineHeightInPixels)
       expectTileContainsRow(tilesNodes[0], 4, top: 1 * lineHeightInPixels)
       expectTileContainsRow(tilesNodes[0], 5, top: 2 * lineHeightInPixels)
 
-      expect(tilesNodes[1].style['-webkit-transform']).toBe "translate3d(0px, #{1 * tileHeight - 5}px, 0px)"
+      expect(tilesNodes[1].style['-webkit-transform']).toBe "translate3d(0px, #{1 * tileHeightInPixels - 5}px, 0px)"
       expect(tilesNodes[1].querySelectorAll(".line").length).toBe(tileSize)
       expectTileContainsRow(tilesNodes[1], 6, top: 0 * lineHeightInPixels)
       expectTileContainsRow(tilesNodes[1], 7, top: 1 * lineHeightInPixels)
       expectTileContainsRow(tilesNodes[1], 8, top: 2 * lineHeightInPixels)
 
-      expect(tilesNodes[2].style['-webkit-transform']).toBe "translate3d(0px, #{2 * tileHeight - 5}px, 0px)"
+      expect(tilesNodes[2].style['-webkit-transform']).toBe "translate3d(0px, #{2 * tileHeightInPixels - 5}px, 0px)"
       expect(tilesNodes[2].querySelectorAll(".line").length).toBe(tileSize)
       expectTileContainsRow(tilesNodes[2], 9, top: 0 * lineHeightInPixels)
       expectTileContainsRow(tilesNodes[2], 10, top: 1 * lineHeightInPixels)
@@ -146,19 +168,18 @@ describe "TextEditorComponent", ->
 
     it "updates the top position of subsequent tiles when lines are inserted or removed", ->
       wrapperNode.style.height = 6.5 * lineHeightInPixels + 'px'
-      tileHeight = tileSize * lineHeightInPixels
       component.measureDimensions()
       editor.getBuffer().deleteRows(0, 1)
       nextAnimationFrame()
 
-      tilesNodes = componentNode.querySelectorAll(".tile")
+      tilesNodes = componentNode.querySelector(".lines").querySelectorAll(".tile")
 
       expect(tilesNodes[0].style['-webkit-transform']).toBe "translate3d(0px, 0px, 0px)"
       expectTileContainsRow(tilesNodes[0], 0, top: 0 * lineHeightInPixels)
       expectTileContainsRow(tilesNodes[0], 1, top: 1 * lineHeightInPixels)
       expectTileContainsRow(tilesNodes[0], 2, top: 2 * lineHeightInPixels)
 
-      expect(tilesNodes[1].style['-webkit-transform']).toBe "translate3d(0px, #{1 * tileHeight}px, 0px)"
+      expect(tilesNodes[1].style['-webkit-transform']).toBe "translate3d(0px, #{1 * tileHeightInPixels}px, 0px)"
       expectTileContainsRow(tilesNodes[1], 3, top: 0 * lineHeightInPixels)
       expectTileContainsRow(tilesNodes[1], 4, top: 1 * lineHeightInPixels)
       expectTileContainsRow(tilesNodes[1], 5, top: 2 * lineHeightInPixels)
@@ -166,19 +187,19 @@ describe "TextEditorComponent", ->
       editor.getBuffer().insert([0, 0], '\n\n')
       nextAnimationFrame()
 
-      tilesNodes = componentNode.querySelectorAll(".tile")
+      tilesNodes = componentNode.querySelector(".lines").querySelectorAll(".tile")
 
       expect(tilesNodes[0].style['-webkit-transform']).toBe "translate3d(0px, 0px, 0px)"
       expectTileContainsRow(tilesNodes[0], 0, top: 0 * lineHeightInPixels)
       expectTileContainsRow(tilesNodes[0], 1, top: 1 * lineHeightInPixels)
       expectTileContainsRow(tilesNodes[0], 2, top: 2 * lineHeightInPixels)
 
-      expect(tilesNodes[1].style['-webkit-transform']).toBe "translate3d(0px, #{1 * tileHeight}px, 0px)"
+      expect(tilesNodes[1].style['-webkit-transform']).toBe "translate3d(0px, #{1 * tileHeightInPixels}px, 0px)"
       expectTileContainsRow(tilesNodes[1], 3, top: 0 * lineHeightInPixels)
       expectTileContainsRow(tilesNodes[1], 4, top: 1 * lineHeightInPixels)
       expectTileContainsRow(tilesNodes[1], 5, top: 2 * lineHeightInPixels)
 
-      expect(tilesNodes[2].style['-webkit-transform']).toBe "translate3d(0px, #{2 * tileHeight}px, 0px)"
+      expect(tilesNodes[2].style['-webkit-transform']).toBe "translate3d(0px, #{2 * tileHeightInPixels}px, 0px)"
       expectTileContainsRow(tilesNodes[2], 6, top: 0 * lineHeightInPixels)
       expectTileContainsRow(tilesNodes[2], 7, top: 1 * lineHeightInPixels)
       expectTileContainsRow(tilesNodes[2], 8, top: 2 * lineHeightInPixels)
@@ -272,16 +293,23 @@ describe "TextEditorComponent", ->
       atom.config.set("editor.showInvisibles", false)
       expect(component.lineNodeForScreenRow(10).textContent).toBe nbsp
 
-    it "gives the lines div the same background color as the editor to improve GPU performance", ->
+    it "gives the lines and tiles divs the same background color as the editor to improve GPU performance", ->
       linesNode = componentNode.querySelector('.lines')
       backgroundColor = getComputedStyle(wrapperNode).backgroundColor
       expect(linesNode.style.backgroundColor).toBe backgroundColor
 
+      for tileNode in linesNode.querySelectorAll(".tile")
+        expect(tileNode.style.backgroundColor).toBe(backgroundColor)
+
       wrapperNode.style.backgroundColor = 'rgb(255, 0, 0)'
+      atom.views.performDocumentPoll()
 
       advanceClock(atom.views.documentPollingInterval)
       nextAnimationFrame()
       expect(linesNode.style.backgroundColor).toBe 'rgb(255, 0, 0)'
+      for tileNode in linesNode.querySelectorAll(".tile")
+        expect(tileNode.style.backgroundColor).toBe("rgb(255, 0, 0)")
+
 
     it "applies .leading-whitespace for lines with leading spaces and/or tabs", ->
       editor.setText(' a')
@@ -552,47 +580,90 @@ describe "TextEditorComponent", ->
         expect(foldedLineNode.querySelector('.fold-marker')).toBeFalsy()
 
   describe "gutter rendering", ->
-    it "renders the currently-visible line numbers", ->
+    expectTileContainsRow = (tileNode, screenRow, {top, text}) ->
+      lineNode = tileNode.querySelector("[data-screen-row='#{screenRow}']")
+
+      expect(lineNode.offsetTop).toBe(top)
+      expect(lineNode.textContent).toBe(text)
+
+    it "renders the currently-visible line numbers in a tiled fashion", ->
       wrapperNode.style.height = 4.5 * lineHeightInPixels + 'px'
       component.measureDimensions()
       nextAnimationFrame()
 
-      expect(componentNode.querySelectorAll('.line-number').length).toBe 6 + 1 # visible line-numbers + dummy line number
-      expect(component.lineNumberNodeForScreenRow(0).textContent).toBe "#{nbsp}1"
-      expect(component.lineNumberNodeForScreenRow(5).textContent).toBe "#{nbsp}6"
+      tilesNodes = componentNode.querySelector(".line-numbers").querySelectorAll(".tile")
 
-      verticalScrollbarNode.scrollTop = 2.5 * lineHeightInPixels
+      expect(tilesNodes.length).toBe(3)
+      expect(tilesNodes[0].style['-webkit-transform']).toBe "translate3d(0px, 0px, 0px)"
+
+      expect(tilesNodes[0].querySelectorAll('.line-number').length).toBe 3
+      expectTileContainsRow(tilesNodes[0], 0, top: lineHeightInPixels * 0, text: "#{nbsp}1")
+      expectTileContainsRow(tilesNodes[0], 1, top: lineHeightInPixels * 1, text: "#{nbsp}2")
+      expectTileContainsRow(tilesNodes[0], 2, top: lineHeightInPixels * 2, text: "#{nbsp}3")
+
+      expect(tilesNodes[1].style['-webkit-transform']).toBe "translate3d(0px, #{1 * tileHeightInPixels}px, 0px)"
+      expect(tilesNodes[1].querySelectorAll('.line-number').length).toBe 3
+      expectTileContainsRow(tilesNodes[1], 3, top: lineHeightInPixels * 0, text: "#{nbsp}4")
+      expectTileContainsRow(tilesNodes[1], 4, top: lineHeightInPixels * 1, text: "#{nbsp}5")
+      expectTileContainsRow(tilesNodes[1], 5, top: lineHeightInPixels * 2, text: "#{nbsp}6")
+
+      expect(tilesNodes[2].style['-webkit-transform']).toBe "translate3d(0px, #{2 * tileHeightInPixels}px, 0px)"
+      expect(tilesNodes[2].querySelectorAll('.line-number').length).toBe 3
+      expectTileContainsRow(tilesNodes[2], 6, top: lineHeightInPixels * 0, text: "#{nbsp}7")
+      expectTileContainsRow(tilesNodes[2], 7, top: lineHeightInPixels * 1, text: "#{nbsp}8")
+      expectTileContainsRow(tilesNodes[2], 8, top: lineHeightInPixels * 2, text: "#{nbsp}9")
+
+      verticalScrollbarNode.scrollTop = tileSize * lineHeightInPixels + 5
       verticalScrollbarNode.dispatchEvent(new UIEvent('scroll'))
       nextAnimationFrame()
 
-      expect(componentNode.querySelectorAll('.line-number').length).toBe 6 + 1 # visible line-numbers + dummy line number
+      tilesNodes = componentNode.querySelector(".line-numbers").querySelectorAll(".tile")
 
-      expect(component.lineNumberNodeForScreenRow(2).textContent).toBe "#{nbsp}3"
-      expect(component.lineNumberNodeForScreenRow(2).offsetTop).toBe 2 * lineHeightInPixels
-      expect(component.lineNumberNodeForScreenRow(7).textContent).toBe "#{nbsp}8"
-      expect(component.lineNumberNodeForScreenRow(7).offsetTop).toBe 7 * lineHeightInPixels
+      expect(component.lineNumberNodeForScreenRow(2)).toBeUndefined()
+      expect(tilesNodes.length).toBe(3)
+
+      expect(tilesNodes[0].style['-webkit-transform']).toBe "translate3d(0px, #{0 * tileHeightInPixels - 5}px, 0px)"
+      expect(tilesNodes[0].querySelectorAll(".line-number").length).toBe(tileSize)
+      expectTileContainsRow(tilesNodes[0], 3, top: lineHeightInPixels * 0, text: "#{nbsp}4")
+      expectTileContainsRow(tilesNodes[0], 4, top: lineHeightInPixels * 1, text: "#{nbsp}5")
+      expectTileContainsRow(tilesNodes[0], 5, top: lineHeightInPixels * 2, text: "#{nbsp}6")
+
+      expect(tilesNodes[1].style['-webkit-transform']).toBe "translate3d(0px, #{1 * tileHeightInPixels - 5}px, 0px)"
+      expect(tilesNodes[1].querySelectorAll(".line-number").length).toBe(tileSize)
+      expectTileContainsRow(tilesNodes[1], 6, top: 0 * lineHeightInPixels, text: "#{nbsp}7")
+      expectTileContainsRow(tilesNodes[1], 7, top: 1 * lineHeightInPixels, text: "#{nbsp}8")
+      expectTileContainsRow(tilesNodes[1], 8, top: 2 * lineHeightInPixels, text: "#{nbsp}9")
+
+      expect(tilesNodes[2].style['-webkit-transform']).toBe "translate3d(0px, #{2 * tileHeightInPixels - 5}px, 0px)"
+      expect(tilesNodes[2].querySelectorAll(".line-number").length).toBe(tileSize)
+      expectTileContainsRow(tilesNodes[2], 9, top: 0 * lineHeightInPixels, text: "10")
+      expectTileContainsRow(tilesNodes[2], 10, top: 1 * lineHeightInPixels, text: "11")
+      expectTileContainsRow(tilesNodes[2], 11, top: 2 * lineHeightInPixels, text: "12")
 
     it "updates the translation of subsequent line numbers when lines are inserted or removed", ->
       editor.getBuffer().insert([0, 0], '\n\n')
       nextAnimationFrame()
 
       lineNumberNodes = componentNode.querySelectorAll('.line-number')
-      expect(component.lineNumberNodeForScreenRow(0).offsetTop).toBe 0
+      expect(component.lineNumberNodeForScreenRow(0).offsetTop).toBe 0 * lineHeightInPixels
       expect(component.lineNumberNodeForScreenRow(1).offsetTop).toBe 1 * lineHeightInPixels
       expect(component.lineNumberNodeForScreenRow(2).offsetTop).toBe 2 * lineHeightInPixels
-      expect(component.lineNumberNodeForScreenRow(3).offsetTop).toBe 3 * lineHeightInPixels
-      expect(component.lineNumberNodeForScreenRow(4).offsetTop).toBe 4 * lineHeightInPixels
+      expect(component.lineNumberNodeForScreenRow(3).offsetTop).toBe 0 * lineHeightInPixels
+      expect(component.lineNumberNodeForScreenRow(4).offsetTop).toBe 1 * lineHeightInPixels
+      expect(component.lineNumberNodeForScreenRow(5).offsetTop).toBe 2 * lineHeightInPixels
 
       editor.getBuffer().insert([0, 0], '\n\n')
       nextAnimationFrame()
 
-      expect(component.lineNumberNodeForScreenRow(0).offsetTop).toBe 0
+      expect(component.lineNumberNodeForScreenRow(0).offsetTop).toBe 0 * lineHeightInPixels
       expect(component.lineNumberNodeForScreenRow(1).offsetTop).toBe 1 * lineHeightInPixels
       expect(component.lineNumberNodeForScreenRow(2).offsetTop).toBe 2 * lineHeightInPixels
-      expect(component.lineNumberNodeForScreenRow(3).offsetTop).toBe 3 * lineHeightInPixels
-      expect(component.lineNumberNodeForScreenRow(4).offsetTop).toBe 4 * lineHeightInPixels
-      expect(component.lineNumberNodeForScreenRow(5).offsetTop).toBe 5 * lineHeightInPixels
-      expect(component.lineNumberNodeForScreenRow(6).offsetTop).toBe 6 * lineHeightInPixels
+      expect(component.lineNumberNodeForScreenRow(3).offsetTop).toBe 0 * lineHeightInPixels
+      expect(component.lineNumberNodeForScreenRow(4).offsetTop).toBe 1 * lineHeightInPixels
+      expect(component.lineNumberNodeForScreenRow(5).offsetTop).toBe 2 * lineHeightInPixels
+      expect(component.lineNumberNodeForScreenRow(6).offsetTop).toBe 0 * lineHeightInPixels
+      expect(component.lineNumberNodeForScreenRow(7).offsetTop).toBe 1 * lineHeightInPixels
+      expect(component.lineNumberNodeForScreenRow(8).offsetTop).toBe 2 * lineHeightInPixels
 
     it "renders • characters for soft-wrapped lines", ->
       editor.setSoftWrapped(true)
@@ -601,13 +672,16 @@ describe "TextEditorComponent", ->
       component.measureDimensions()
       nextAnimationFrame()
 
-      expect(componentNode.querySelectorAll('.line-number').length).toBe 6 + 1 # 1 dummy line
+      expect(componentNode.querySelectorAll('.line-number').length).toBe 9 + 1 # 3 line-numbers tiles + 1 dummy line
       expect(component.lineNumberNodeForScreenRow(0).textContent).toBe "#{nbsp}1"
       expect(component.lineNumberNodeForScreenRow(1).textContent).toBe "#{nbsp}•"
       expect(component.lineNumberNodeForScreenRow(2).textContent).toBe "#{nbsp}2"
       expect(component.lineNumberNodeForScreenRow(3).textContent).toBe "#{nbsp}•"
       expect(component.lineNumberNodeForScreenRow(4).textContent).toBe "#{nbsp}3"
       expect(component.lineNumberNodeForScreenRow(5).textContent).toBe "#{nbsp}•"
+      expect(component.lineNumberNodeForScreenRow(6).textContent).toBe "#{nbsp}4"
+      expect(component.lineNumberNodeForScreenRow(7).textContent).toBe "#{nbsp}•"
+      expect(component.lineNumberNodeForScreenRow(8).textContent).toBe "#{nbsp}•"
 
     it "pads line numbers to be right-justified based on the maximum number of line number digits", ->
       editor.getBuffer().setText([1..10].join('\n'))
@@ -645,12 +719,17 @@ describe "TextEditorComponent", ->
       lineNumbersNode = gutterNode.querySelector('.line-numbers')
       {backgroundColor} = getComputedStyle(wrapperNode)
       expect(lineNumbersNode.style.backgroundColor).toBe backgroundColor
+      for tileNode in lineNumbersNode.querySelectorAll(".tile")
+        expect(tileNode.style.backgroundColor).toBe(backgroundColor)
 
       # favor gutter color if it's assigned
       gutterNode.style.backgroundColor = 'rgb(255, 0, 0)'
-      advanceClock(atom.views.documentPollingInterval)
+      atom.views.performDocumentPoll()
+
       nextAnimationFrame()
       expect(lineNumbersNode.style.backgroundColor).toBe 'rgb(255, 0, 0)'
+      for tileNode in lineNumbersNode.querySelectorAll(".tile")
+        expect(tileNode.style.backgroundColor).toBe("rgb(255, 0, 0)")
 
     it "hides or shows the gutter based on the '::isLineNumberGutterVisible' property on the model and the global 'editor.showLineNumbers' config setting", ->
       expect(component.gutterContainerComponent.getLineNumberGutterComponent()?).toBe true
@@ -745,6 +824,8 @@ describe "TextEditorComponent", ->
 
         describe "when the component is destroyed", ->
           it "stops listening for folding events", ->
+            nextAnimationFrame() unless nextAnimationFrame is noAnimationFrame # clear pending frame request if needed
+
             component.destroy()
 
             lineNumber = component.lineNumberNodeForScreenRow(1)
@@ -769,6 +850,8 @@ describe "TextEditorComponent", ->
           expect(lineNumberHasClass(1, 'folded')).toBe false
 
         it "does not fold when the line number componentNode is clicked", ->
+          nextAnimationFrame() unless nextAnimationFrame is noAnimationFrame # clear pending frame request if needed
+
           lineNumber = component.lineNumberNodeForScreenRow(1)
           lineNumber.dispatchEvent(buildClickEvent(lineNumber))
           expect(nextAnimationFrame).toBe noAnimationFrame
@@ -978,7 +1061,7 @@ describe "TextEditorComponent", ->
     it "renders 2 regions for 2-line selections", ->
       editor.setSelectedScreenRange([[1, 6], [2, 10]])
       nextAnimationFrame()
-      tileNode = componentNode.querySelectorAll(".tile")[0]
+      tileNode = componentNode.querySelector(".lines").querySelectorAll(".tile")[0]
       regions = tileNode.querySelectorAll('.selection .region')
       expect(regions.length).toBe 2
 
@@ -999,7 +1082,7 @@ describe "TextEditorComponent", ->
       nextAnimationFrame()
 
       # Tile 0
-      tileNode = componentNode.querySelectorAll(".tile")[0]
+      tileNode = componentNode.querySelector(".lines").querySelectorAll(".tile")[0]
       regions = tileNode.querySelectorAll('.selection .region')
       expect(regions.length).toBe(3)
 
@@ -1022,7 +1105,7 @@ describe "TextEditorComponent", ->
       expect(region3Rect.right).toBe tileNode.getBoundingClientRect().right
 
       # Tile 3
-      tileNode = componentNode.querySelectorAll(".tile")[1]
+      tileNode = componentNode.querySelector(".lines").querySelectorAll(".tile")[1]
       regions = tileNode.querySelectorAll('.selection .region')
       expect(regions.length).toBe(3)
 
@@ -1092,7 +1175,7 @@ describe "TextEditorComponent", ->
     [marker, decoration, decorationParams] = []
 
     beforeEach ->
-      marker = editor.displayBuffer.markBufferRange([[2, 13], [3, 15]], invalidate: 'inside')
+      marker = editor.displayBuffer.markBufferRange([[2, 13], [3, 15]], invalidate: 'inside', maintainHistory: true)
       decorationParams = {type: ['line-number', 'line'], class: 'a'}
       decoration = editor.decorateMarker(marker, decorationParams)
       nextAnimationFrame()
@@ -1236,7 +1319,7 @@ describe "TextEditorComponent", ->
     [marker, decoration, decorationParams, scrollViewClientLeft] = []
     beforeEach ->
       scrollViewClientLeft = componentNode.querySelector('.scroll-view').getBoundingClientRect().left
-      marker = editor.displayBuffer.markBufferRange([[2, 13], [3, 15]], invalidate: 'inside')
+      marker = editor.displayBuffer.markBufferRange([[2, 13], [3, 15]], invalidate: 'inside', maintainHistory: true)
       decorationParams = {type: 'highlight', class: 'test-highlight'}
       decoration = editor.decorateMarker(marker, decorationParams)
       nextAnimationFrame()
@@ -1414,6 +1497,17 @@ describe "TextEditorComponent", ->
 
         overlay = component.getTopmostDOMNode().querySelector('atom-overlay .overlay-test')
         expect(overlay).toBe null
+
+      it "renders the overlay element with the CSS class specified by the decoration", ->
+        marker = editor.displayBuffer.markBufferRange([[2, 13], [2, 13]], invalidate: 'never')
+        decoration = editor.decorateMarker(marker, {type: 'overlay', class: 'my-overlay', item})
+        nextAnimationFrame()
+
+        overlay = component.getTopmostDOMNode().querySelector('atom-overlay.my-overlay')
+        expect(overlay).not.toBe null
+
+        child = overlay.querySelector('.overlay-test')
+        expect(child).toBe item
 
     describe "when the marker is not empty", ->
       it "renders at the head of the marker by default", ->
@@ -1698,6 +1792,22 @@ describe "TextEditorComponent", ->
         expect(nextAnimationFrame).toBe noAnimationFrame
         expect(editor.getSelectedScreenRange()).toEqual [[2, 4], [6, 8]]
 
+      describe "when the command key is held down", ->
+        it "adds a new selection and selects to the nearest screen position, then merges intersecting selections when the mouse button is released", ->
+          editor.setSelectedScreenRange([[4, 4], [4, 9]])
+
+          linesNode.dispatchEvent(buildMouseEvent('mousedown', clientCoordinatesForScreenPosition([2, 4]), which: 1, metaKey: true))
+          linesNode.dispatchEvent(buildMouseEvent('mousemove', clientCoordinatesForScreenPosition([6, 8]), which: 1))
+          nextAnimationFrame()
+          expect(editor.getSelectedScreenRanges()).toEqual [[[4, 4], [4, 9]], [[2, 4], [6, 8]]]
+
+          linesNode.dispatchEvent(buildMouseEvent('mousemove', clientCoordinatesForScreenPosition([4, 6]), which: 1))
+          nextAnimationFrame()
+          expect(editor.getSelectedScreenRanges()).toEqual [[[4, 4], [4, 9]], [[2, 4], [4, 6]]]
+
+          linesNode.dispatchEvent(buildMouseEvent('mouseup', clientCoordinatesForScreenPosition([4, 6]), which: 1))
+          expect(editor.getSelectedScreenRanges()).toEqual [[[2, 4], [4, 9]]]
+
       describe "when the editor is destroyed while dragging", ->
         it "cleans up the handlers for window.mouseup and window.mousemove", ->
           linesNode.dispatchEvent(buildMouseEvent('mousedown', clientCoordinatesForScreenPosition([2, 4]), which: 1))
@@ -1713,6 +1823,58 @@ describe "TextEditorComponent", ->
           call.args.pop() for call in window.removeEventListener.calls
           expect(window.removeEventListener).toHaveBeenCalledWith('mouseup')
           expect(window.removeEventListener).toHaveBeenCalledWith('mousemove')
+
+    describe "when the mouse is double-clicked and dragged", ->
+      it "expands the selection over the nearest word as the cursor moves", ->
+        jasmine.attachToDOM(wrapperNode)
+        wrapperNode.style.height =  6 * lineHeightInPixels + 'px'
+        component.measureDimensions()
+        nextAnimationFrame()
+
+        linesNode.dispatchEvent(buildMouseEvent('mousedown', clientCoordinatesForScreenPosition([5, 10]), detail: 1))
+        linesNode.dispatchEvent(buildMouseEvent('mouseup'))
+        linesNode.dispatchEvent(buildMouseEvent('mousedown', clientCoordinatesForScreenPosition([5, 10]), detail: 2))
+        expect(editor.getSelectedScreenRange()).toEqual [[5, 6], [5, 13]]
+
+        linesNode.dispatchEvent(buildMouseEvent('mousemove', clientCoordinatesForScreenPosition([11, 11]), which: 1))
+        nextAnimationFrame()
+        expect(editor.getSelectedScreenRange()).toEqual [[5, 6], [11, 13]]
+
+        maximalScrollTop = editor.getScrollTop()
+
+        linesNode.dispatchEvent(buildMouseEvent('mousemove', clientCoordinatesForScreenPosition([9, 3]), which: 1))
+        nextAnimationFrame()
+        expect(editor.getSelectedScreenRange()).toEqual [[5, 6], [9, 4]]
+        expect(editor.getScrollTop()).toBe maximalScrollTop # does not autoscroll upward (regression)
+
+        linesNode.dispatchEvent(buildMouseEvent('mouseup', clientCoordinatesForScreenPosition([9, 3]), which: 1))
+
+    describe "when the mouse is triple-clicked and dragged", ->
+      it "expands the selection over the nearest line as the cursor moves", ->
+        jasmine.attachToDOM(wrapperNode)
+        wrapperNode.style.height =  6 * lineHeightInPixels + 'px'
+        component.measureDimensions()
+        nextAnimationFrame()
+
+        linesNode.dispatchEvent(buildMouseEvent('mousedown', clientCoordinatesForScreenPosition([5, 10]), detail: 1))
+        linesNode.dispatchEvent(buildMouseEvent('mouseup'))
+        linesNode.dispatchEvent(buildMouseEvent('mousedown', clientCoordinatesForScreenPosition([5, 10]), detail: 2))
+        linesNode.dispatchEvent(buildMouseEvent('mouseup'))
+        linesNode.dispatchEvent(buildMouseEvent('mousedown', clientCoordinatesForScreenPosition([5, 10]), detail: 3))
+        expect(editor.getSelectedScreenRange()).toEqual [[5, 0], [6, 0]]
+
+        linesNode.dispatchEvent(buildMouseEvent('mousemove', clientCoordinatesForScreenPosition([11, 11]), which: 1))
+        nextAnimationFrame()
+        expect(editor.getSelectedScreenRange()).toEqual [[5, 0], [12, 0]]
+
+        maximalScrollTop = editor.getScrollTop()
+
+        linesNode.dispatchEvent(buildMouseEvent('mousemove', clientCoordinatesForScreenPosition([8, 4]), which: 1))
+        nextAnimationFrame()
+        expect(editor.getSelectedScreenRange()).toEqual [[5, 0], [9, 0]]
+        expect(editor.getScrollTop()).toBe maximalScrollTop # does not autoscroll upward (regression)
+
+        linesNode.dispatchEvent(buildMouseEvent('mouseup', clientCoordinatesForScreenPosition([9, 3]), which: 1))
 
     describe "when a line is folded", ->
       beforeEach ->
@@ -1803,10 +1965,12 @@ describe "TextEditorComponent", ->
           gutterNode.dispatchEvent(buildMouseEvent('mouseup', clientCoordinatesForScreenRowInGutter(6), metaKey: true))
           expect(editor.getSelectedScreenRanges()).toEqual [[[3, 0], [3, 2]], [[4, 0], [7, 0]]]
 
-        it "merges overlapping selections", ->
+        it "merges overlapping selections when the mouse button is released", ->
           gutterNode.dispatchEvent(buildMouseEvent('mousedown', clientCoordinatesForScreenRowInGutter(2), metaKey: true))
           gutterNode.dispatchEvent(buildMouseEvent('mousemove', clientCoordinatesForScreenRowInGutter(6), metaKey: true))
           nextAnimationFrame()
+          expect(editor.getSelectedScreenRanges()).toEqual [[[3, 0], [3, 2]], [[2, 0], [7, 0]]]
+
           gutterNode.dispatchEvent(buildMouseEvent('mouseup', clientCoordinatesForScreenRowInGutter(6), metaKey: true))
           expect(editor.getSelectedScreenRanges()).toEqual [[[2, 0], [7, 0]]]
 
@@ -2059,7 +2223,7 @@ describe "TextEditorComponent", ->
       component.measureDimensions()
       nextAnimationFrame()
 
-      tilesNodes = componentNode.querySelectorAll(".tile")
+      tilesNodes = componentNode.querySelector(".lines").querySelectorAll(".tile")
 
       top = 0
       for tileNode in tilesNodes
@@ -2545,7 +2709,7 @@ describe "TextEditorComponent", ->
         expect(componentNode.querySelectorAll('.line').length).toBe 0
 
         hiddenParent.style.display = 'block'
-        advanceClock(atom.views.documentPollingInterval)
+        atom.views.performDocumentPoll()
 
         expect(componentNode.querySelectorAll('.line').length).toBeGreaterThan 0
 
@@ -2655,13 +2819,13 @@ describe "TextEditorComponent", ->
       expect(parseInt(newHeight)).toBeLessThan wrapperNode.offsetHeight
       wrapperNode.style.height = newHeight
 
-      advanceClock(atom.views.documentPollingInterval)
+      atom.views.performDocumentPoll()
       nextAnimationFrame()
       expect(componentNode.querySelectorAll('.line')).toHaveLength(6)
 
       gutterWidth = componentNode.querySelector('.gutter').offsetWidth
       componentNode.style.width = gutterWidth + 14 * charWidth + editor.getVerticalScrollbarWidth() + 'px'
-      advanceClock(atom.views.documentPollingInterval)
+      atom.views.performDocumentPoll()
       nextAnimationFrame()
       expect(componentNode.querySelector('.line').textContent).toBe "var quicksort "
 
@@ -2670,7 +2834,7 @@ describe "TextEditorComponent", ->
       scrollViewNode.style.paddingLeft = 20 + 'px'
       componentNode.style.width = 30 * charWidth + 'px'
 
-      advanceClock(atom.views.documentPollingInterval)
+      atom.views.performDocumentPoll()
       nextAnimationFrame()
 
       expect(component.lineNodeForScreenRow(0).textContent).toBe "var quicksort = "

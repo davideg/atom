@@ -67,6 +67,7 @@ class Package
   mainModulePath: null
   resolvedMainModulePath: false
   mainModule: null
+  mainActivated: false
 
   ###
   Section: Construction
@@ -122,7 +123,7 @@ class Package
         @loadMenus()
         @loadStylesheets()
         @settingsPromise = @loadSettings()
-        @requireMainModule() unless @hasActivationCommands()
+        @requireMainModule() unless @mainModule? or @activationShouldBeDeferred()
       catch error
         @handleError("Failed to load the #{@name} package", error)
     this
@@ -133,6 +134,7 @@ class Package
     @menus = []
     @grammars = []
     @settings = []
+    @mainActivated = false
 
   activate: ->
     @grammarsPromise ?= @loadGrammars()
@@ -142,8 +144,8 @@ class Package
       @measure 'activateTime', =>
         try
           @activateResources()
-          if @hasActivationCommands()
-            @subscribeToActivationCommands()
+          if @activationShouldBeDeferred()
+            @subscribeToDeferredActivation()
           else
             @activateNow()
         catch error
@@ -155,7 +157,7 @@ class Package
     try
       @activateConfig()
       @activateStylesheets()
-      if @requireMainModule()
+      if @mainModule? and not @mainActivated
         @mainModule.activate?(atom.packages.getPackageState(@name) ? {})
         @mainActivated = true
         @activateServices()
@@ -167,7 +169,7 @@ class Package
   activateConfig: ->
     return if @configActivated
 
-    @requireMainModule()
+    @requireMainModule() unless @mainModule?
     if @mainModule?
       if @mainModule.config? and typeof @mainModule.config is 'object'
         atom.config.setSchema @name, {type: 'object', properties: @mainModule.config}
@@ -198,7 +200,12 @@ class Package
 
   activateResources: ->
     @activationDisposables = new CompositeDisposable
-    @activationDisposables.add(atom.keymaps.add(keymapPath, map)) for [keymapPath, map] in @keymaps
+
+    keymapIsDisabled = _.include(atom.config.get("core.disabledKeymaps") ? [], @name)
+    if keymapIsDisabled
+      @deactivateKeymaps()
+    else
+      @activateKeymaps()
 
     for [menuPath, map] in @menus when map['context-menu']?
       try
@@ -229,6 +236,30 @@ class Package
 
     settings.activate() for settings in @settings
     @settingsActivated = true
+
+  activateKeymaps: ->
+    return if @keymapActivated
+
+    @keymapDisposables = new CompositeDisposable()
+
+    @keymapDisposables.add(atom.keymaps.add(keymapPath, map)) for [keymapPath, map] in @keymaps
+    atom.menu.update()
+
+    @keymapActivated = true
+
+  deactivateKeymaps: ->
+    return if not @keymapActivated
+
+    @keymapDisposables?.dispose()
+    atom.menu.update()
+
+    @keymapActivated = false
+
+  hasKeymaps: ->
+    for [path, map] in @keymaps
+      if map.length > 0
+        return true
+    false
 
   activateServices: ->
     for name, {versions} of @metadata.providedServices
@@ -379,9 +410,11 @@ class Package
     @activationCommandSubscriptions?.dispose()
     @deactivateResources()
     @deactivateConfig()
+    @deactivateKeymaps()
     if @mainActivated
       try
         @mainModule?.deactivate?()
+        @mainActivated = false
       catch e
         console.error "Error deactivating package '#{@name}'", e.stack
     @emit 'deactivated' if includeDeprecatedAPIs
@@ -396,6 +429,7 @@ class Package
     settings.deactivate() for settings in @settings
     @stylesheetDisposables?.dispose()
     @activationDisposables?.dispose()
+    @keymapDisposables?.dispose()
     @stylesheetsActivated = false
     @grammarsActivated = false
     @settingsActivated = false
@@ -443,10 +477,20 @@ class Package
           path.join(@path, 'index')
       @mainModulePath = fs.resolveExtension(mainModulePath, ["", _.keys(require.extensions)...])
 
+  activationShouldBeDeferred: ->
+    @hasActivationCommands() or @hasActivationHooks()
+
+  hasActivationHooks: ->
+    @getActivationHooks()?.length > 0
+
   hasActivationCommands: ->
     for selector, commands of @getActivationCommands()
       return true if commands.length > 0
     false
+
+  subscribeToDeferredActivation: ->
+    @subscribeToActivationCommands()
+    @subscribeToActivationHooks()
 
   subscribeToActivationCommands: ->
     @activationCommandSubscriptions = new CompositeDisposable
@@ -515,6 +559,27 @@ class Package
           @activationCommands[selector].push(eventName)
 
     @activationCommands
+
+  subscribeToActivationHooks: ->
+    @activationHookSubscriptions = new CompositeDisposable
+    for hook in @getActivationHooks()
+      do (hook) =>
+        @activationHookSubscriptions.add(atom.packages.onDidTriggerActivationHook(hook, => @activateNow())) if hook? and _.isString(hook) and hook.trim().length > 0
+
+    return
+
+  getActivationHooks: ->
+    return @activationHooks if @metadata? and @activationHooks?
+
+    @activationHooks = []
+
+    if @metadata.activationHooks?
+      if _.isArray(@metadata.activationHooks)
+        @activationHooks.push(@metadata.activationHooks...)
+      else if _.isString(@metadata.activationHooks)
+        @activationHooks.push(@metadata.activationHooks)
+
+    @activationHooks = _.uniq(@activationHooks)
 
   # Does the given module path contain native code?
   isNativeModule: (modulePath) ->

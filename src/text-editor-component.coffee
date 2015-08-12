@@ -107,7 +107,6 @@ class TextEditorComponent
     @disposables.dispose()
     @presenter.destroy()
     @gutterContainerComponent?.destroy()
-    window.removeEventListener 'resize', @requestHeightAndWidthMeasurement
 
   getDomNode: ->
     @domNode
@@ -224,7 +223,6 @@ class TextEditorComponent
     @domNode.addEventListener 'textInput', @onTextInput
     @scrollViewNode.addEventListener 'mousedown', @onMouseDown
     @scrollViewNode.addEventListener 'scroll', @onScrollViewScroll
-    window.addEventListener 'resize', @requestHeightAndWidthMeasurement
 
     @listenForIMEEvents()
     @trackSelectionClipboard() if process.platform is 'linux'
@@ -406,7 +404,7 @@ class TextEditorComponent
         @editor.getLastSelection().selectLine()
 
     @handleDragUntilMouseUp event, (screenPosition) =>
-      @editor.selectToScreenPosition(screenPosition)
+      @editor.selectToScreenPosition(screenPosition, true)
 
   onLineNumberGutterMouseDown: (event) =>
     return unless event.button is 0 # only handle the left mouse button
@@ -449,9 +447,6 @@ class TextEditorComponent
         rowSelection.setBufferRange([[dragBufferRow, 0], [clickedBufferRow + 1, 0]], preserveFolds: true)
       else
         rowSelection.setBufferRange([[clickedBufferRow, 0], [dragBufferRow + 1, 0]], preserveFolds: true)
-
-      # After updating the selected screen range, merge overlapping selections
-      @editor.mergeIntersectingSelections(preserveFolds: true)
 
       # The merge process will possibly destroy the current selection because
       # it will be merged into another one. Therefore, we need to obtain a
@@ -554,6 +549,7 @@ class TextEditorComponent
     onMouseUp = (event) =>
       stopDragging()
       @editor.finalizeSelections()
+      @editor.mergeIntersectingSelections()
       pasteSelectionClipboard(event)
 
     stopDragging = ->
@@ -588,15 +584,6 @@ class TextEditorComponent
         @wasVisible = true
     else
       @wasVisible = false
-
-  requestHeightAndWidthMeasurement: =>
-    return if @heightAndWidthMeasurementRequested
-
-    @heightAndWidthMeasurementRequested = true
-    requestAnimationFrame =>
-      @heightAndWidthMeasurementRequested = false
-      @measureDimensions()
-      @measureWindowSize()
 
   # Measure explicitly-styled height and width and relay them to the model. If
   # these values aren't explicitly styled, we assume the editor is unconstrained
@@ -729,9 +716,18 @@ class TextEditorComponent
   consolidateSelections: (e) ->
     e.abortKeyBinding() unless @editor.consolidateSelections()
 
-  lineNodeForScreenRow: (screenRow) -> @linesComponent.lineNodeForScreenRow(screenRow)
+  lineNodeForScreenRow: (screenRow) ->
+    tileRow = @presenter.tileForRow(screenRow)
+    tileComponent = @linesComponent.getComponentForTile(tileRow)
 
-  lineNumberNodeForScreenRow: (screenRow) -> @gutterContainerComponent.getLineNumberGutterComponent().lineNumberNodeForScreenRow(screenRow)
+    tileComponent?.lineNodeForScreenRow(screenRow)
+
+  lineNumberNodeForScreenRow: (screenRow) ->
+    tileRow = @presenter.tileForRow(screenRow)
+    gutterComponent = @gutterContainerComponent.getLineNumberGutterComponent()
+    tileComponent = gutterComponent.getComponentForTile(tileRow)
+
+    tileComponent?.lineNumberNodeForScreenRow(screenRow)
 
   screenRowForNode: (node) ->
     while node?

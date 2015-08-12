@@ -621,14 +621,14 @@ class TextEditor extends Model
   # Essential: Saves the editor's text buffer.
   #
   # See {TextBuffer::save} for more details.
-  save: -> @buffer.save()
+  save: -> @buffer.save(backup: atom.config.get('editor.backUpBeforeSaving'))
 
   # Public: Saves the editor's text buffer as the given path.
   #
   # See {TextBuffer::saveAs} for more details.
   #
   # * `filePath` A {String} path.
-  saveAs: (filePath) -> @buffer.saveAs(filePath)
+  saveAs: (filePath) -> @buffer.saveAs(filePath, backup: atom.config.get('editor.backUpBeforeSaving'))
 
   # Determine whether the user should be prompted to save before closing
   # this editor.
@@ -772,31 +772,24 @@ class TextEditor extends Model
   # Returns a {Range} when the text has been inserted
   # Returns a {Boolean} false when the text has not been inserted
   insertText: (text, options={}) ->
-    willInsert = true
-    cancel = -> willInsert = false
-    willInsertEvent = {cancel, text}
-    @emit('will-insert-text', willInsertEvent) if includeDeprecatedAPIs
-    @emitter.emit 'will-insert-text', willInsertEvent
+    return false unless @emitWillInsertTextEvent(text)
 
     groupingInterval = if options.groupUndo
       atom.config.get('editor.undoGroupingInterval')
     else
       0
 
-    if willInsert
-      options.autoIndentNewline ?= @shouldAutoIndent()
-      options.autoDecreaseIndent ?= @shouldAutoIndent()
-      @mutateSelectedText(
-        (selection) =>
-          range = selection.insertText(text, options)
-          didInsertEvent = {text, range}
-          @emit('did-insert-text', didInsertEvent) if includeDeprecatedAPIs
-          @emitter.emit 'did-insert-text', didInsertEvent
-          range
-        , groupingInterval
-      )
-    else
-      false
+    options.autoIndentNewline ?= @shouldAutoIndent()
+    options.autoDecreaseIndent ?= @shouldAutoIndent()
+    @mutateSelectedText(
+      (selection) =>
+        range = selection.insertText(text, options)
+        didInsertEvent = {text, range}
+        @emit('did-insert-text', didInsertEvent) if includeDeprecatedAPIs
+        @emitter.emit 'did-insert-text', didInsertEvent
+        range
+      , groupingInterval
+    )
 
   # Essential: For each selection, replace the selected text with a newline.
   insertNewline: ->
@@ -983,13 +976,13 @@ class TextEditor extends Model
         range = selection.getBufferRange()
         continue if range.isSingleLine()
 
-        selection.destroy()
         {start, end} = range
         @addSelectionForBufferRange([start, [start.row, Infinity]])
         {row} = start
         while ++row < end.row
           @addSelectionForBufferRange([[row, 0], [row, Infinity]])
         @addSelectionForBufferRange([[end.row, 0], [end.row, end.column]]) unless end.column is 0
+        selection.destroy()
       return
 
   # Extended: For each selection, transpose the selected text.
@@ -1077,6 +1070,18 @@ class TextEditor extends Model
   # next word boundary.
   deleteToNextWordBoundary: ->
     @mutateSelectedText (selection) -> selection.deleteToNextWordBoundary()
+
+  # Extended: For each selection, if the selection is empty, delete all characters
+  # of the containing subword following the cursor. Otherwise delete the selected
+  # text.
+  deleteToBeginningOfSubword: ->
+    @mutateSelectedText (selection) -> selection.deleteToBeginningOfSubword()
+
+  # Extended: For each selection, if the selection is empty, delete all characters
+  # of the containing subword following the cursor. Otherwise delete the selected
+  # text.
+  deleteToEndOfSubword: ->
+    @mutateSelectedText (selection) -> selection.deleteToEndOfSubword()
 
   # Extended: For each selection, if the selection is empty, delete all characters
   # of the containing line that precede the cursor. Otherwise delete the
@@ -1311,7 +1316,7 @@ class TextEditor extends Model
   #       head or tail of the given marker, depending on the `position`
   #       property.
   #   * `class` This CSS class will be applied to the decorated line number,
-  #     line, or highlight.
+  #     line, highlight, or overlay.
   #   * `onlyHead` (optional) If `true`, the decoration will only be applied to
   #     the head of the marker. Only applicable to the `line` and `gutter`
   #     types.
@@ -1410,11 +1415,17 @@ class TextEditor extends Model
   # * `range` A {Range} or range-compatible {Array}
   # * `properties` A hash of key-value pairs to associate with the marker. There
   #   are also reserved property names that have marker-specific meaning.
-  #   * `reversed` (optional) Creates the marker in a reversed orientation. (default: false)
-  #   * `persistent` (optional) Whether to include this marker when serializing the buffer. (default: true)
-  #   * `invalidate` (optional) Determines the rules by which changes to the
-  #     buffer *invalidate* the marker. (default: 'overlap') It can be any of
-  #     the following strategies, in order of fragility
+  #   * `maintainHistory` (optional) {Boolean} Whether to store this marker's
+  #     range before and after each change in the undo history. This allows the
+  #     marker's position to be restored more accurately for certain undo/redo
+  #     operations, but uses more time and memory. (default: false)
+  #   * `reversed` (optional) {Boolean} Creates the marker in a reversed
+  #     orientation. (default: false)
+  #   * `persistent` (optional) {Boolean} Whether to include this marker when
+  #     serializing the buffer. (default: true)
+  #   * `invalidate` (optional) {String} Determines the rules by which changes
+  #     to the buffer *invalidate* the marker. (default: 'overlap') It can be
+  #     any of the following strategies, in order of fragility:
   #     * __never__: The marker is never marked as invalid. This is a good choice for
   #       markers representing selections in an editor.
   #     * __surround__: The marker is invalidated by changes that completely surround it.
@@ -1439,11 +1450,17 @@ class TextEditor extends Model
   # * `range` A {Range} or range-compatible {Array}
   # * `properties` A hash of key-value pairs to associate with the marker. There
   #   are also reserved property names that have marker-specific meaning.
-  #   * `reversed` (optional) Creates the marker in a reversed orientation. (default: false)
-  #   * `persistent` (optional) Whether to include this marker when serializing the buffer. (default: true)
-  #   * `invalidate` (optional) Determines the rules by which changes to the
-  #     buffer *invalidate* the marker. (default: 'overlap') It can be any of
-  #     the following strategies, in order of fragility
+  #   * `maintainHistory` (optional) {Boolean} Whether to store this marker's
+  #     range before and after each change in the undo history. This allows the
+  #     marker's position to be restored more accurately for certain undo/redo
+  #     operations, but uses more time and memory. (default: false)
+  #   * `reversed` (optional) {Boolean} Creates the marker in a reversed
+  #     orientation. (default: false)
+  #   * `persistent` (optional) {Boolean} Whether to include this marker when
+  #     serializing the buffer. (default: true)
+  #   * `invalidate` (optional) {String} Determines the rules by which changes
+  #     to the buffer *invalidate* the marker. (default: 'overlap') It can be
+  #     any of the following strategies, in order of fragility:
   #     * __never__: The marker is never marked as invalid. This is a good choice for
   #       markers representing selections in an editor.
   #     * __surround__: The marker is invalidated by changes that completely surround it.
@@ -1703,6 +1720,14 @@ class TextEditor extends Model
   moveToNextWordBoundary: ->
     @moveCursors (cursor) -> cursor.moveToNextWordBoundary()
 
+  # Extended: Move every cursor to the previous subword boundary.
+  moveToPreviousSubwordBoundary: ->
+    @moveCursors (cursor) -> cursor.moveToPreviousSubwordBoundary()
+
+  # Extended: Move every cursor to the next subword boundary.
+  moveToNextSubwordBoundary: ->
+    @moveCursors (cursor) -> cursor.moveToNextSubwordBoundary()
+
   # Extended: Move every cursor to the beginning of the next paragraph.
   moveToBeginningOfNextParagraph: ->
     @moveCursors (cursor) -> cursor.moveToBeginningOfNextParagraph()
@@ -1923,10 +1948,11 @@ class TextEditor extends Model
   # This method may merge selections that end up intesecting.
   #
   # * `position` An instance of {Point}, with a given `row` and `column`.
-  selectToScreenPosition: (position) ->
+  selectToScreenPosition: (position, suppressMerge) ->
     lastSelection = @getLastSelection()
     lastSelection.selectToScreenPosition(position)
-    @mergeIntersectingSelections(reversed: lastSelection.isReversed())
+    unless suppressMerge
+      @mergeIntersectingSelections(reversed: lastSelection.isReversed())
 
   # Essential: Move the cursor of each selection one character upward while
   # preserving the selection's tail position.
@@ -2020,6 +2046,20 @@ class TextEditor extends Model
   # word while preserving the selection's tail position.
   selectToEndOfWord: ->
     @expandSelectionsForward (selection) -> selection.selectToEndOfWord()
+
+  # Extended: For each selection, move its cursor to the preceding subword
+  # boundary while maintaining the selection's tail position.
+  #
+  # This method may merge selections that end up intersecting.
+  selectToPreviousSubwordBoundary: ->
+    @expandSelectionsBackward (selection) -> selection.selectToPreviousSubwordBoundary()
+
+  # Extended: For each selection, move its cursor to the next subword boundary
+  # while maintaining the selection's tail position.
+  #
+  # This method may merge selections that end up intersecting.
+  selectToNextSubwordBoundary: ->
+    @expandSelectionsForward (selection) -> selection.selectToNextSubwordBoundary()
 
   # Essential: For each cursor, select the containing line.
   #
@@ -2218,6 +2258,7 @@ class TextEditor extends Model
   # Remove the given selection.
   removeSelection: (selection) ->
     _.remove(@selections, selection)
+    atom.assert @selections.length > 0, "Removed last selection"
     @emit 'selection-removed', selection if includeDeprecatedAPIs
     @emitter.emit 'did-remove-selection', selection
 
@@ -2447,13 +2488,14 @@ class TextEditor extends Model
     options.autoIndent ?= @shouldAutoIndent()
     @mutateSelectedText (selection) -> selection.indent(options)
 
-  # Constructs the string used for tabs.
-  buildIndentString: (number, column=0) ->
+  # Constructs the string used for indents.
+  buildIndentString: (level, column=0) ->
     if @getSoftTabs()
       tabStopViolation = column % @getTabLength()
-      _.multiplyString(" ", Math.floor(number * @getTabLength()) - tabStopViolation)
+      _.multiplyString(" ", Math.floor(level * @getTabLength()) - tabStopViolation)
     else
-      _.multiplyString("\t", Math.floor(number))
+      excessWhitespace = _.multiplyString(' ', Math.round((level - Math.floor(level)) * @getTabLength()))
+      _.multiplyString("\t", Math.floor(level)) + excessWhitespace
 
   ###
   Section: Grammars
@@ -2567,6 +2609,8 @@ class TextEditor extends Model
   # * `options` (optional) See {Selection::insertText}.
   pasteText: (options={}) ->
     {text: clipboardText, metadata} = atom.clipboard.readWithMetadata()
+    return false unless @emitWillInsertTextEvent(clipboardText)
+
     metadata ?= {}
     options.autoIndent = @shouldAutoIndentOnPaste()
 
@@ -2584,14 +2628,19 @@ class TextEditor extends Model
         if containsNewlines or not cursor.hasPrecedingCharactersOnLine()
           options.indentBasis ?= indentBasis
 
+      range = null
       if fullLine and selection.isEmpty()
         oldPosition = selection.getBufferRange().start
         selection.setBufferRange([[oldPosition.row, 0], [oldPosition.row, 0]])
-        selection.insertText(text, options)
+        range = selection.insertText(text, options)
         newPosition = oldPosition.translate([1, 0])
         selection.setBufferRange([newPosition, newPosition])
       else
-        selection.insertText(text, options)
+        range = selection.insertText(text, options)
+
+      didInsertEvent = {text, range}
+      @emit('did-insert-text', didInsertEvent) if includeDeprecatedAPIs
+      @emitter.emit 'did-insert-text', didInsertEvent
 
   # Public: For each selection, if the selection is empty, cut all characters
   # of the containing line following the cursor. Otherwise cut the selected
@@ -2830,7 +2879,6 @@ class TextEditor extends Model
 
   handleGrammarChange: ->
     @unfoldAll()
-    @emit 'grammar-changed' if includeDeprecatedAPIs
     @emitter.emit 'did-change-grammar', @getGrammar()
 
   handleMarkerCreated: (marker) =>
@@ -2877,7 +2925,7 @@ class TextEditor extends Model
     @displayBuffer.pixelPositionForScreenPosition(screenPosition)
 
   getSelectionMarkerAttributes: ->
-    type: 'selection', editorId: @id, invalidate: 'never'
+    {type: 'selection', editorId: @id, invalidate: 'never', maintainHistory: true}
 
   getVerticalScrollMargin: -> @displayBuffer.getVerticalScrollMargin()
   setVerticalScrollMargin: (verticalScrollMargin) -> @displayBuffer.setVerticalScrollMargin(verticalScrollMargin)
@@ -2941,6 +2989,14 @@ class TextEditor extends Model
     "<TextEditor #{@id}>"
 
   logScreenLines: (start, end) -> @displayBuffer.logLines(start, end)
+
+  emitWillInsertTextEvent: (text) ->
+    result = true
+    cancel = -> result = false
+    willInsertEvent = {cancel, text}
+    @emit('will-insert-text', willInsertEvent) if includeDeprecatedAPIs
+    @emitter.emit 'will-insert-text', willInsertEvent
+    result
 
 if includeDeprecatedAPIs
   TextEditor.delegatesProperties '$lineHeightInPixels', '$defaultCharWidth', '$height', '$width',
